@@ -1,0 +1,614 @@
+---
+title: "Análisis de Atributos"
+author: "Enrique Padrón Hernández"
+date: "2024-12-08"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+
+```{r global, include=FALSE}
+library(MASS)
+library(shinydashboard)
+library(datasets)
+library(highcharter) 
+library(fpp3)
+library(RColorBrewer)
+library(openxlsx)  
+library(leaflet)  
+library(geojsonio)
+library(plotly)
+library(ggplot2)
+library(tidyverse)
+pdf(file = NULL) # evita errores al hacer el box-cox en shiny 
+```
+
+```{r,echo=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache=FALSE,
+  echo=FALSE
+)
+```
+
+
+Column {.sidebar data-width=230}
+--------------------------------------------------
+
+
+```{r}
+boroughs_geoj <- geojson_read("new-york-city-boroughs.geojson", what = "sp")
+boroughs_geoj_Tibble <- boroughs_geoj %>% as_tibble()
+
+
+school_districts_geoj <- geojson_read("School-Districts.geojson", what = "sp")
+school_districts_geoj_Tibble <- school_districts_geoj %>% as_tibble()
+
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble() 
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+
+Datos_NYC_Borough_Tidy <- Datos_NYC_Borough %>%
+  pivot_longer(cols = c(Total.Enrollment:Economic.Need.Index), names_to = "Parametro", values_to = "Valores")
+
+
+Datos_NYC_District_Tidy <- Datos_NYC_District %>%
+  pivot_longer(cols = c(Total.Enrollment:Economic.Need.Index), names_to = "Parametro", values_to = "Valores")
+
+```
+
+
+Mapa por Borough
+=======================================================================
+
+Column {.sidebar data-width=250}
+--------------------------------------------------
+
+
+```{r}
+selectInput(
+  "param", 
+  label = "PARAMETRO" , 
+  choices = unique(Datos_NYC_Borough_Tidy$Parametro), 
+  selected = "Total.Enrollment"
+)
+```
+
+```{r}
+selectInput(
+  "año", 
+  label = "CURSO ESCOLAR", 
+  choices = unique(Datos_NYC_Borough_Tidy$Year), 
+  selected = "2017-18"
+)
+```
+
+
+```{r}
+# procesado de inputs de la primera ventana
+inputs.processing1 <- reactive({
+  tb <- Datos_NYC_Borough_Tidy %>%
+  filter(Parametro == input$param, Year == input$año) %>% 
+  group_by(Borough) %>%
+  summarise(
+    Valores=last(na.omit(Valores))
+  ) %>%
+ arrange(desc(Valores))
+  
+  
+ return(tb)
+})
+```
+
+
+```{r}
+renderTable({
+ 
+ #capturamos el procesado de inputs de la primera ventana
+ Datos_NYC_Borough_Tidy_Filter <- inputs.processing1()   
+  
+ Datos_NYC_Borough_Tidy_Filter %>% 
+ mutate(Valores=prettyNum(round(Valores,digits=2), big.mark = ","))
+  
+})
+```
+
+Column {.tabset .tabset-fade}
+--------------------------------------------------
+
+### 
+
+
+```{r}
+leaflet::renderLeaflet({
+  Datos_NYC_Borough_Tidy_Filter <- inputs.processing1()   
+  
+  boroughs_geoj_Tibble_Joined <- boroughs_geoj_Tibble %>%
+    left_join(Datos_NYC_Borough_Tidy_Filter, by = c("name" = "Borough"))
+
+  data <- boroughs_geoj_Tibble_Joined$Valores
+  if (all(is.na(data))) {
+    return(leaflet() %>% addTiles() %>% addLabelOnlyMarkers(lng = 0, lat = 0, label = "Sin datos"))
+  }
+  
+  pal <- colorQuantile("YlOrRd", data, n = 9)
+  legend.title <- input$param
+
+  etiquetas <- paste(
+    "<strong>", boroughs_geoj_Tibble_Joined$name, "</strong><br>",
+    legend.title, ": ",
+    prettyNum(round(data, digits = 2), big.mark = ",", scientific = FALSE)
+  ) %>%
+    lapply(htmltools::HTML)
+
+  leaflet(data = boroughs_geoj) %>%  
+    addTiles() %>%  # Agregar un fondo base
+    addPolygons(
+      fillColor = ~pal(data), 
+      weight = 2,
+      opacity = 1,
+      color = "white",
+      dashArray = "3",
+      fillOpacity = 0.7,
+      highlightOptions = highlightOptions( 
+        weight = 2,
+        color = rgb(0.2, 0.2, 0.2),
+        dashArray = "",
+        fillOpacity = 0.7,
+        bringToFront = TRUE
+      ),
+      label = etiquetas 
+    ) %>% 
+    addLegend("bottomleft", 
+      pal = pal, 
+      values = data,
+      title = legend.title,
+      labFormat = function(type, cuts, p) {
+        n = length(cuts) 
+        x = (cuts[-n] + cuts[-1]) / 2
+        prettyNum(round(x, digits = 2), big.mark = ",", scientific = FALSE)
+      },
+      opacity = 1
+    )
+})
+
+```
+
+Mapa por Distrito
+=======================================================================
+
+Column {.sidebar data-width=280}
+--------------------------------------------------
+
+```{r}
+selectInput(
+  "param", 
+  label = "PARAMETRO" , 
+  choices = unique(Datos_NYC_District_Tidy$Parametro), 
+  selected = "Total.Enrollment"
+)
+```
+
+```{r}
+selectInput(
+  "año", 
+  label = "CURSO ESCOLAR", 
+  choices = unique(Datos_NYC_District_Tidy$Year), 
+  selected = "2017-18"
+)
+```
+
+
+```{r}
+# procesado de inputs de la primera ventana
+inputs.processing3 <- reactive({
+  tb <- Datos_NYC_District_Tidy %>%
+  filter(Parametro == input$param, Year == input$año) %>% 
+  group_by(Administrative.District) %>%
+  summarise(
+    Valores=last(na.omit(Valores))
+  ) %>%
+ arrange(desc(Valores)) %>%
+  mutate(Administrative.District = str_remove(Administrative.District, "^0"))
+  
+  
+ return(tb)
+})
+```
+
+```{r}
+renderTable({
+ 
+ #capturamos el procesado de inputs de la primera ventana
+ Datos_NYC_District_Tidy_Filter <- inputs.processing3()   
+  
+ Datos_NYC_District_Tidy_Filter %>% 
+ mutate(Valores=prettyNum(round(Valores,digits=2), big.mark = ",")) %>%
+  mutate(Administrative.District = str_remove(Administrative.District, "^0"))
+  
+})
+```
+
+---
+
+### Distritos No Geográficos:
+  
+   **Distrito 75**
+    : Atiende a estudiantes con discapacidades significativas y necesidades especiales. Ofrece programas y servicios especializados.
+
+   **Distrito 79**
+    : Proporciona servicios educativos para estudiantes en circunstancias extraordinarias, como aquellos que están en programas de justicia juvenil o que requieren opciones educativas alternativas.
+
+   **Distrito 84**
+    : Engloba las escuelas charter, que operan independientemente del Departamento de Educación de NYC pero reciben fondos públicos.
+
+---
+
+Column {.tabset .tabset-fade}
+--------------------------------------------------
+
+### 
+
+
+```{r}
+leaflet::renderLeaflet({
+  Datos_NYC_District_Tidy_Filter <- inputs.processing3()   
+  
+  school_districts_geoj_Tibble <- school_districts_geoj_Tibble %>%
+  rename(Administrative.District = school_dist)
+  
+  districts_geoj_Tibble_Joined <-  left_join(school_districts_geoj_Tibble, Datos_NYC_District_Tidy_Filter, join_by("Administrative.District"))
+
+  data <- districts_geoj_Tibble_Joined$Valores
+  if (all(is.na(data))) {
+    return(leaflet() %>% addTiles() %>% addLabelOnlyMarkers(lng = 0, lat = 0, label = "Sin datos"))
+  }
+  
+  pal <- colorQuantile("YlOrRd", data, n = 9)
+  legend.title <- input$param
+
+  etiquetas <- paste(
+    "<strong>", districts_geoj_Tibble_Joined$Administrative.District, "</strong><br>",
+    legend.title, ": ",
+    prettyNum(round(data, digits = 2), big.mark = ",", scientific = FALSE)
+  ) %>%
+    lapply(htmltools::HTML)
+
+  leaflet(data = school_districts_geoj) %>%  
+    addTiles() %>%  # Agregar un fondo base
+    addPolygons(
+      fillColor = ~pal(data), 
+      weight = 2,
+      opacity = 1,
+      color = "white",
+      dashArray = "3",
+      fillOpacity = 0.7,
+      highlightOptions = highlightOptions( 
+        weight = 2,
+        color = rgb(0.2, 0.2, 0.2),
+        dashArray = "",
+        fillOpacity = 0.7,
+        bringToFront = TRUE
+      ),
+      label = etiquetas 
+    ) %>% 
+    addLegend("bottomleft", 
+      pal = pal, 
+      values = data,
+      title = legend.title,
+      labFormat = function(type, cuts, p) {
+        n = length(cuts) 
+        x = (cuts[-n] + cuts[-1]) / 2
+        prettyNum(round(x, digits = 2), big.mark = ",", scientific = FALSE)
+      },
+      opacity = 1
+    )
+})
+
+```
+
+Matriz de Correlación de Pobreza y Raza
+=======================================================================
+
+
+Column {.sidebar data-width=230}
+--------------------------------------------------
+
+```{r}
+selectInput(
+  "borough", 
+  label = "BOROUGH" , 
+  choices = unique(Datos_NYC_Borough$Borough), 
+  selected = "Manhattan"
+)
+```
+
+
+Column {.tabset}
+--------------------------------------------------
+
+### 
+
+```{r}
+highcharter::renderHighchart({
+Datos_NYC_Borough %>%
+    filter(Borough == input$borough) %>%
+  dplyr::select(-Borough, -Year) %>%
+  dplyr::select(`%.Male`:`%.Missing.Race/Ethnicity.Data`, `#.Poverty`:Economic.Need.Index) %>%
+  cor(use='complete.obs') %>%
+    hchart()
+})
+```
+
+
+
+ACP (PCA)
+=======================================================================
+
+Column {.sidebar data-width=230}
+--------------------------------------------------
+
+```{r}
+selectInput(
+  "year2", 
+  label = "CURSO ESCOLAR" , 
+  choices = unique(Datos_NYC_Borough$Year), 
+  selected = "2017-18"
+)
+```
+
+Column {.tabset}
+--------------------------------------------------
+
+### Atributos originales
+
+```{r}
+shiny::renderTable({
+  Datos_NYC_Borough %>% 
+  filter(Year == input$year2) %>%
+  dplyr::select(-Year)
+})
+```
+
+### Atributos normalizados 
+
+```{r}
+shiny::renderTable({
+  Datos_NYC_Borough %>% 
+  filter(Year == input$year2) %>%
+  column_to_rownames(var = "Borough") %>%
+  dplyr::select(-Year) %>%
+  scale()
+})
+```
+
+### Componentes Principales
+
+```{r}
+inputs.processing2 <- reactive({
+  data <- Datos_NYC_Borough %>%
+  filter(Year == input$year2) %>%
+  dplyr::select(-Year) %>%
+  column_to_rownames(var = "Borough")
+
+  pca_borough <- prcomp(data, scale = TRUE)
+  
+  return(pca_borough)
+})
+```
+
+```{r}
+shiny::renderTable({
+  pca_borough <- inputs.processing2()
+  pca_borough$x %>% as_tibble() 
+})
+```
+
+### Varianza Explicada
+
+```{r} 
+renderPlotly({
+ pca <- inputs.processing2()
+  
+ tibble(
+  label=fct_inorder(paste("PC",1:length(pca$sdev))),
+  varPercent = pca$sdev^2/sum(pca$sdev^2) * 100
+) %>%
+  ggplot(aes(x=label,y=varPercent)) +
+    geom_bar(stat = "identity") +
+    labs(x= "Componentes Principales", 
+          y= "Porcentaje varianza explicada"
+    )+
+   geom_text(aes(label=paste0(round(varPercent,digits = 1),"%")), 
+                 size=3,
+                 colour = "blue",
+                 nudge_y = 1.
+             ) 
+  
+})
+```
+
+
+
+
+
+Visualización 2D PCA
+=======================================================================
+
+Column {.sidebar data-width=230}
+--------------------------------------------------
+
+```{r}
+Datos_NYC_Borough_Filter <- Datos_NYC_Borough %>%
+  filter(Year == "2021-22") %>%
+  dplyr::select(-Year) %>%
+  column_to_rownames(var = "Borough")
+
+
+pca <- prcomp(Datos_NYC_Borough_Filter, scale = TRUE)
+
+shiny::numericInput(
+  "PCx",
+  label = "Componente eje x",
+  value=1,
+  min=1,
+  max=length(pca$sdev),
+  step=1
+)
+
+shiny::numericInput(
+  "PCy",
+  label = "Componente eje y",
+  value=2,
+  min=1,
+  max=length(pca$sdev),
+  step=1
+)
+```
+
+Column
+--------------------------------------------------
+
+###
+
+```{r} 
+highcharter::renderHighchart({
+ hchart(pca,choices=c(input$PCx,input$PCy))
+})
+```
+
+
+Comparación de Indicadores
+=======================================================================
+
+Column {.sidebar data-width=230}
+--------------------------------------------------
+
+```{r}
+# Widgets para selección de parámetros 
+selectInput(
+  "x", 
+  label = "Indicator 1:",
+  choices = colnames(Datos_NYC_Borough)[-(1:2)], # ADAPTAR A LOS DATOS 
+  selected = colnames(Datos_NYC_Borough)[-(1:2)][1] # ADAPTAR A LOS DATOS 
+)
+
+selectInput(
+  "x_scale", 
+  label = "Scale Transform Indicator 1:",
+  choices = c("none",
+              "sqrt",    
+              "log"
+             ), 
+  selected = "none"
+)
+
+selectInput(
+  "y", 
+  label = "Indicator 2:",
+  choices = colnames(Datos_NYC_Borough)[-(1:2)], # ADAPTAR A LOS DATOS 
+  selected = colnames(Datos_NYC_Borough)[-(1:2)][40] # ADAPTAR A LOS DATOS 
+)
+
+selectInput(
+  "y_scale", 
+  label = "Scale Transform Indicator 2:",
+  choices = c("none",
+              "log",
+              "boxcox"
+             ), 
+  selected = "none"
+)
+```
+
+```{r}
+inputs.processing <- reactive( {   
+  tb <-  Datos_NYC_Borough %>% 
+  select(borough=Borough,x=input$x,y=input$y) %>%   
+  na.omit() %>%
+  filter(x>0 & y>0)
+  if(input$x_scale=="sqrt") tb$x <- sqrt(tb$x)
+  if(input$x_scale=="log") tb$x <- log(tb$x)  
+  if(input$y_scale=="log") tb$y <- log(tb$y)  
+  lambda <- 1  
+  if(input$y_scale=="boxcox"){
+    bc <- MASS::boxcox (y ~ x,data=tb) # Cálculo óptimo modelo Box-Cox 
+    lambda <- round(bc $ x [which.max (bc $ y)],digits=4)
+    if(lambda!=0){
+      tb$y <- tb$y^lambda/lambda
+    } else {
+      tb$y <- log(tb$y)
+    }
+  }
+  
+  fit <- lm(y ~ x,data=tb)
+  
+  return(list(tb,fit,lambda))
+})
+``` 
+
+```{r}
+shiny::renderUI({
+  tb <- inputs.processing()[[1]]
+  fit <- inputs.processing()[[2]]
+  lambda <- inputs.processing()[[3]]
+  text <- 
+  paste(
+    "<strong>LINEAR REGRESSION ANALYSIS</strong> <br>",
+    "<strong>formula:   y=ax+b </strong><br>",
+    "<strong>x: indicator 1 scaled </strong><br>",
+    "<strong>y: indicator 2 scaled </strong><br>",
+    "<strong><br>RESULTS</strong><br>",
+    "<strong>correlation:</strong>",round(cor(tb$x,tb$y),digits = 4),
+    "<br><strong>slope (a):</strong>",formatC(fit$coefficients[2], format = "e", digits = 2),
+    "<br><strong>independent (b):</strong>",formatC(fit$coefficients[1], format = "e", digits = 2)
+  )
+  if(input$y_scale=="boxcox"){
+    text <- paste(text,"<br><strong> lambda (box-cox) :</strong>",formatC(lambda, format = "e", digits = 2))
+  } 
+      
+  HTML(text)
+})
+```
+
+Column
+--------------------------------------------------
+
+### Scaled Indicators Comparison
+
+```{r} 
+# Diagrama de dispersión de los indicadores seleccionados escalados 
+# Con la recta de regresión 
+renderPlotly({
+  
+  # capturamos el resultado del procesado de los inputs 
+  tb <- inputs.processing()[[1]]
+  
+  # dibujamos el diagrama de dispersión 
+  tb %>%
+    ggplot(aes(x,y,label=borough)) + 
+    geom_point() +
+    theme(legend.position = "none") +
+    labs(x= input$x, y= input$y) +
+    geom_smooth(method = lm, se = FALSE) 
+  
+})
+```
+
+Column {data-width=300}
+--------------------------------------------------
+
+### Scaled Indicator Values
+
+```{r}
+renderTable({
+  
+  tb <- inputs.processing()[[1]]
+  tb %>% 
+  arrange(desc(x)) %>% 
+  mutate(x=prettyNum(round(x,digits=2), big.mark = ",")) %>% 
+  mutate(y=prettyNum(round(y,digits=2), big.mark = ","))
+  
+})
+```
+

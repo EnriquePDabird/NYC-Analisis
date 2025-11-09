@@ -1,0 +1,512 @@
+grafico_boroughs[[4]]
+grafico_boroughs[[5]]
+p <- Datos_NYC_Borough %>%
+select(Borough, Year, `%.Poverty`) %>%
+ggplot(aes(x = Borough, y = `%.Poverty`, fill = Borough, label = Year))+
+geom_boxplot(outlier.shape = NA) +
+geom_jitter(shape=16, position=position_jitter(0.2))+
+theme(legend.position = "none")
+ggplotly(p,tooltip=c("%.Poverty","Year"))
+Datos_NYC_Borough_Percentages %>%
+ggplot(aes(x=1, y=Porcentaje, fill=Raza)) +
+geom_col() +
+coord_polar(theta = "y") +
+labs(title = "Distribución porcentual de estudiantes por raza en cada borough",
+fill = "Raza") +
+facet_wrap(~Borough) +
+theme_minimal()
+Datos_NYC_Borough_Tidy <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble() %>%
+pivot_longer(cols = c(Total.Enrollment:Economic.Need.Index), names_to = "Parametro", values_to = "Valores")
+input.param = "Total.Enrollment"
+input.año = "2017-18"
+tb <- Datos_NYC_Borough_Tidy %>%
+filter(Parametro == input.param, Year == input.año) %>%
+group_by(Borough) %>%
+summarise(
+Valores=last(na.omit(Valores))
+) %>%
+arrange(desc(Valores))
+boroughs_geoj_Data <- boroughs_geoj_Tibble %>%
+left_join(Datos_NYC_Borough_Tidy, join_by(name == Borough))
+boroughs_geoj <- geojson_read("new-york-city-boroughs.geojson", what = "sp")
+boroughs_geoj_Tibble <- boroughs_geoj %>% as_tibble()
+school_districts_geoj <- geojson_read("School-Districts.geojson", what = "sp")
+school_districts_geoj_Tibble <- school_districts_geoj %>% as_tibble()
+knitr::opts_chunk$set(
+warning = FALSE,
+message = FALSE,
+echo=TRUE
+)
+if (!require(wordcloud)) install.packages('wordcloud')
+library(wordcloud)
+if (!require(RColorBrewer)) install.packages('RColorBrewer')
+library(RColorBrewer)
+if (!require(GGally)) install.packages('GGally')
+library(GGally)
+if (!require(openxlsx)) install.packages('openxlsx')
+library(openxlsx)
+if (!require(pxR)) install.packages('pxR')
+library(pxR)
+if (!require(patchwork)) install.packages('patchwork')
+library(patchwork)
+if (!require(ggplot2)) install.packages('ggplot2')
+library(ggplot2)
+if (!require(tidyverse)) install.packages('tidyverse')
+library(tidyverse)
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+library(DT)
+datatable(
+Datos_NYC_Borough,
+extensions = c("Buttons", "Responsive"),
+options = list(
+dom = 'Bfrtip', # Barra de búsqueda, filtros y botones
+buttons = c('copy', 'csv', 'excel', 'pdf', 'print'), # Botones de exportación
+pageLength = 10, # Número de filas visibles por página
+autoWidth = TRUE # Ajuste automático de ancho de columnas
+),
+caption = 'Distribución de estudiantes según Borough.'
+)
+datatable(
+Datos_NYC_District,
+extensions = c("Buttons", "Responsive"),
+options = list(
+dom = 'Bfrtip',
+buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+pageLength = 10,
+autoWidth = TRUE
+),
+caption = 'Distribución de estudiantes según Distrito Escolar.'
+)
+p <- Datos_NYC_Borough %>%
+ggplot(aes(x=Year, y=`Total.Enrollment`, fill=Borough)) +
+geom_bar(stat="identity", position="dodge") +
+labs(title="Evolución de estudiantes inscritos en escuelas por año",
+x="Año Escolar",
+y="Total de Inscripciones",
+fill="Borough") +
+theme_minimal()
+ggplotly(p)
+orden_grados <- c("Grade.3K", "Grade.PK.(Half.Day.&.Full.Day)", "Grade.K", "Grade.1", "Grade.2", "Grade.3", "Grade.4", "Grade.5", "Grade.6", "Grade.7", "Grade.8", "Grade.9", "Grade.10", "Grade.11", "Grade.12")
+Datos_Grados_Tidy <- Datos_NYC_Borough %>%
+select(Borough, Grade.3K:Grade.12) %>%
+pivot_longer(cols = c(Grade.3K:Grade.12), names_to = "Grado", values_to = "Población") %>%
+group_by(Borough, Grado) %>%
+mutate(Grado = factor(Grado, levels = orden_grados))
+boroughs <- unique(Datos_Grados_Tidy$Borough)
+grafico_boroughs <- lapply(boroughs, function(b) {
+Datos_Grados_Tidy %>%
+filter(Borough == b) %>%
+plot_ly(
+x = ~Grado,
+y = ~Población,
+type = 'bar',
+name = b,
+marker = list(color = 'rgba(55, 128, 191, 0.7)')
+) %>%
+layout(
+title = paste("Distribución de la población por grado escolar en", b),
+xaxis = list(title = "Grado", tickangle = 45),
+yaxis = list(title = "Población"),
+showlegend = FALSE,
+bargap = 0.3
+)
+})
+p <- Datos_NYC_Borough %>%
+select(Borough, Year, `%.Poverty`) %>%
+ggplot(aes(x = Borough, y = `%.Poverty`, fill = Borough, label = Year))+
+geom_boxplot(outlier.shape = NA) +
+geom_jitter(shape=16, position=position_jitter(0.2))+
+theme(legend.position = "none")
+ggplotly(p,tooltip=c("%.Poverty","Year"))
+Datos_NYC_Borough_Percentages %>%
+ggplot(aes(x=1, y=Porcentaje, fill=Raza)) +
+geom_col() +
+coord_polar(theta = "y") +
+labs(title = "Distribución porcentual de estudiantes por raza en cada borough",
+fill = "Raza") +
+facet_wrap(~Borough) +
+theme_minimal()
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+Datos_NYC_Borough
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough) %>% # Agrupar por Year y Borough
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE),
+.groups = "drop" # Asegura que el agrupamiento no persista innecesariamente
+) %>%
+pivot_longer(
+cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza",
+values_to = "Porcentaje"
+)
+# Verificar que la columna Borough sigue presente
+head(Datos_NYC_Borough_Percentages)
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+knitr::opts_chunk$set(
+warning = FALSE,
+message = FALSE,
+echo=TRUE
+)
+if (!require(wordcloud)) install.packages('wordcloud')
+library(wordcloud)
+if (!require(RColorBrewer)) install.packages('RColorBrewer')
+library(RColorBrewer)
+if (!require(GGally)) install.packages('GGally')
+library(GGally)
+if (!require(openxlsx)) install.packages('openxlsx')
+library(openxlsx)
+if (!require(pxR)) install.packages('pxR')
+library(pxR)
+if (!require(patchwork)) install.packages('patchwork')
+library(patchwork)
+if (!require(ggplot2)) install.packages('ggplot2')
+library(ggplot2)
+if (!require(tidyverse)) install.packages('tidyverse')
+library(tidyverse)
+if (!require(urca)) install.packages('urca')
+library(urca)
+if (!require(GGally)) install.packages('GGally')
+library(GGally)
+if (!require(pxR)) install.packages('pxR')
+library(pxR)
+if (!require(fpp3)) install.packages('fpp3')
+library(fpp3)
+if (!require(highcharter)) install.packages('highcharter')
+library(highcharter)
+if (!require(RColorBrewer)) install.packages('RColorBrewer')
+library(RColorBrewer)
+if (!require(openxlsx)) install.packages('openxlsx')
+library(openxlsx)
+if (!require(leaflet)) install.packages('leaflet')
+library(leaflet)
+if (!require(geojsonio)) install.packages('geojsonio')
+library(geojsonio)
+if (!require(plotly)) install.packages('plotly')
+library(plotly)
+if (!require(shiny)) install.packages('shiny')
+library(shiny)
+if (!require(flexdashboard)) install.packages('flexdashboard')
+library(flexdashboard)
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+library(DT)
+datatable(
+Datos_NYC_Borough,
+extensions = c("Buttons", "Responsive"),
+options = list(
+dom = 'Bfrtip', # Barra de búsqueda, filtros y botones
+buttons = c('copy', 'csv', 'excel', 'pdf', 'print'), # Botones de exportación
+pageLength = 10, # Número de filas visibles por página
+autoWidth = TRUE # Ajuste automático de ancho de columnas
+),
+caption = 'Distribución de estudiantes según Borough.'
+)
+datatable(
+Datos_NYC_District,
+extensions = c("Buttons", "Responsive"),
+options = list(
+dom = 'Bfrtip',
+buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+pageLength = 10,
+autoWidth = TRUE
+),
+caption = 'Distribución de estudiantes según Distrito Escolar.'
+)
+p <- Datos_NYC_Borough %>%
+ggplot(aes(x=Year, y=`Total.Enrollment`, fill=Borough)) +
+geom_bar(stat="identity", position="dodge") +
+labs(title="Evolución de estudiantes inscritos en escuelas por año",
+x="Año Escolar",
+y="Total de Inscripciones",
+fill="Borough") +
+theme_minimal()
+ggplotly(p)
+orden_grados <- c("Grade.3K", "Grade.PK.(Half.Day.&.Full.Day)", "Grade.K", "Grade.1", "Grade.2", "Grade.3", "Grade.4", "Grade.5", "Grade.6", "Grade.7", "Grade.8", "Grade.9", "Grade.10", "Grade.11", "Grade.12")
+Datos_Grados_Tidy <- Datos_NYC_Borough %>%
+select(Borough, Grade.3K:Grade.12) %>%
+pivot_longer(cols = c(Grade.3K:Grade.12), names_to = "Grado", values_to = "Población") %>%
+group_by(Borough, Grado) %>%
+mutate(Grado = factor(Grado, levels = orden_grados))
+boroughs <- unique(Datos_Grados_Tidy$Borough)
+grafico_boroughs <- lapply(boroughs, function(b) {
+Datos_Grados_Tidy %>%
+filter(Borough == b) %>%
+plot_ly(
+x = ~Grado,
+y = ~Población,
+type = 'bar',
+name = b,
+marker = list(color = 'rgba(55, 128, 191, 0.7)')
+) %>%
+layout(
+title = paste("Distribución de la población por grado escolar en", b),
+xaxis = list(title = "Grado", tickangle = 45),
+yaxis = list(title = "Población"),
+showlegend = FALSE,
+bargap = 0.3
+)
+})
+p <- Datos_NYC_Borough %>%
+select(Borough, Year, `%.Poverty`) %>%
+ggplot(aes(x = Borough, y = `%.Poverty`, fill = Borough, label = Year))+
+geom_boxplot(outlier.shape = NA) +
+geom_jitter(shape=16, position=position_jitter(0.2))+
+theme(legend.position = "none")
+ggplotly(p,tooltip=c("%.Poverty","Year"))
+Datos_NYC_SumadosBH <- Datos_NYC_Borough %>%
+mutate(`#.Black + #.Hispanic` = `#.Black` + `#.Hispanic`,
+`%.Black + %.Hispanic` = `%.Black` + `%.Hispanic`)
+p2 <- Datos_NYC_SumadosBH %>%
+ggplot(aes(x=`%.Poverty`, y=`%.Black + %.Hispanic`, color=Borough)) +
+geom_point(size=3, alpha=0.7) +
+labs(title="Relación entre Estudiantes en Situación de Pobreza y Estudiantes Black + Hispanic",
+x="Porcentaje de Estudiantes en Situación de Pobreza",
+y="Número de Estudiantes Black + Hispanic",
+color = "Borough") +
+theme_minimal()
+ggplotly(p2)
+p3 <- Datos_NYC_SumadosBH %>%
+ggplot(aes(`#.Poverty`, `#.Black + #.Hispanic`)) +
+geom_point() +
+geom_smooth(method = lm, se = FALSE)
+ggplotly(p3)
+Datos_NYC_Borough_Dates <- Datos_NYC_Borough_Percentages %>%
+mutate(Year = as.numeric(substr(Year, 1, 4)))  # Extrae el primer año y lo convierte a número
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough_Dates <- Datos_NYC_Borough_Percentages %>%
+mutate(Year = as.numeric(substr(Year, 1, 4)))  # Extrae el primer año y lo convierte a número
+Datos_NYC_Borough_Dates
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Year, Borough)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Borough, Year)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Borough, Year)%>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+)
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough %>%
+group_by(Borough, Year) %>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+)
+Datos_NYC_Borough %>%
+group_by(Borough, Year) %>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+)
+Datos_NYC_Borough %>%
+group_by(Borough, Year) %>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+)
+Datos_NYC_Borough %>%
+group_by(Borough, Year)
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Borough, Year)
+%>%
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Borough, Year) %>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+)
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>%
+group_by(Borough, Year) %>%
+summarise(
+Asian = sum(`%.Asian`, na.rm = TRUE),
+Black = sum(`%.Black`, na.rm = TRUE),
+Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+White = sum(`%.White`, na.rm = TRUE),
+`Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+`Native American` = sum(`%.Native.American`, na.rm = TRUE),
+`Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+) %>%
+pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+names_to = "Raza", values_to = "Porcentaje")
+Datos_NYC_Borough_Percentages
+Datos_NYC_Borough_Poverty_English <- Datos_NYC_Borough %>%
+group_by(Year, Borough) %>%
+summarise(
+`%.English Learners` = sum(`%.English.Language.Learners`, na.rm = TRUE),
+`#.English Learners` = sum(`#.English.Language.Learners`, na.rm = TRUE),
+`%.Poverty` = sum(`%.Poverty`, na.rm = TRUE),
+`#.Poverty` = sum(`#.Poverty`, na.rm = TRUE),
+)

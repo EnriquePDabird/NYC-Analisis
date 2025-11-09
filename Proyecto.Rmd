@@ -1,0 +1,1025 @@
+---
+title: "Análisis por boroughs y distritos escolares de la ciudad de Nueva York de datos demográficos y de índices de pobreza de estudiantes entre 2017 y 2022"
+author: "Enrique Padrón Hernández"
+output:
+  html_document:
+    number_sections: false
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+Fecha última actualización : `r format(Sys.Date(), '%B %d, %Y')`.
+
+[Análisis de atributos en Dashboard](http://10.22.143.222:3838/sample-apps/a2542/ProyectoDashboard.Rmd).
+
+![Bajo Manhattan desde Governors Island](C:/Users/USUARIO\Desktop\COLEGIO\Año 2\CURSO 3\Analisis Exploratorio de Datos\Ejercicios de Entrega/Proyecto/Lower_Manhattan_from_Governors_Island_August_2017_panorama.jpg)
+
+```{r,echo=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  echo=TRUE
+)
+```
+
+```{r, echo = FALSE,message = FALSE,warning = FALSE}
+if (!require(wordcloud)) install.packages('wordcloud') 
+library(wordcloud)
+if (!require(RColorBrewer)) install.packages('RColorBrewer') 
+library(RColorBrewer)
+if (!require(GGally)) install.packages('GGally') 
+library(GGally)
+if (!require(openxlsx)) install.packages('openxlsx') 
+library(openxlsx)
+if (!require(pxR)) install.packages('pxR') 
+library(pxR)
+if (!require(patchwork)) install.packages('patchwork') 
+library(patchwork)
+if (!require(ggplot2)) install.packages('ggplot2') 
+library(ggplot2)
+if (!require(tidyverse)) install.packages('tidyverse') 
+library(tidyverse)
+```
+
+```{r, echo = FALSE,message = FALSE,warning = FALSE}
+if (!require(urca)) install.packages('urca') 
+library(urca)
+if (!require(GGally)) install.packages('GGally') 
+library(GGally)
+if (!require(pxR)) install.packages('pxR') 
+library(pxR)
+if (!require(fpp3)) install.packages('fpp3') 
+library(fpp3)
+if (!require(highcharter)) install.packages('highcharter') 
+library(highcharter) 
+if (!require(RColorBrewer)) install.packages('RColorBrewer') 
+library(RColorBrewer)
+if (!require(openxlsx)) install.packages('openxlsx') 
+library(openxlsx) 
+if (!require(leaflet)) install.packages('leaflet') 
+library(leaflet)  
+if (!require(geojsonio)) install.packages('geojsonio') 
+library(geojsonio) 
+if (!require(plotly)) install.packages('plotly') 
+library(plotly)
+if (!require(shiny)) install.packages('shiny') 
+library(shiny) 
+if (!require(flexdashboard)) install.packages('flexdashboard') 
+library(flexdashboard)
+```
+
+```{r, echo = FALSE}
+
+Datos_NYC_Borough <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble()
+Datos_NYC_District <-  read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 4) %>% as_tibble()
+
+Datos_NYC_Borough_Percentages <- Datos_NYC_Borough %>% 
+  group_by(Borough, Year) %>%
+  summarise(
+      Asian = sum(`%.Asian`, na.rm = TRUE),
+      Black = sum(`%.Black`, na.rm = TRUE),
+      Hispanic = sum(`%.Hispanic`, na.rm = TRUE),
+      White = sum(`%.White`, na.rm = TRUE),
+      `Multi-Racial` = sum(`%.Multi-Racial`, na.rm = TRUE),
+      `Native American` = sum(`%.Native.American`, na.rm = TRUE),
+      `Missing Ethnicity Data` = sum(`%.Missing.Race/Ethnicity.Data`, na.rm = TRUE)
+    ) %>%
+    pivot_longer(cols = c("Asian", "Black", "Hispanic", "White", "Multi-Racial", "Native American", "Missing Ethnicity Data"),
+                 names_to = "Raza", values_to = "Porcentaje")
+```
+## Estado actual y objetivos.
+
+Durante muchos años, la ciudad de Nueva York ha sido vista como la capital ecónmica, cultural, y política del mundo occidental. Solo Londres la iguala en su calidad como ciudad global, [alcanzando el rango Alpha++](https://en.wikipedia.org/wiki/Globalization_and_World_Cities_Research_Network#Alpha) de integración de la urbe con la economía global. Por lo que no es sorprendete que se trate de una de las ciudades mejor documentadas del mundo y más analizadas del mundo, existiendo una gran cantidad de datos abiertos al público en [NYC Open Data](https://opendata.cityofnewyork.us/), haciendo del estudio de la evolución de esta ciudad algo accesible y prácticamente gratuito para analistas de todo el mundo tanto profesionales como amateur.
+
+Nueva York también se conoce históricamente como el centro migratorio más importante de Estados Unidos, con grandes cantidades de inmigrantes llegando anualmente desde principios del siglo XIX, lo que ha causado que la ciudad tenga un nivel de diversidad cultural muy destacable incluso dentro de EE.UU (en la ciudad se hablan [más de 800 idiomas](https://www.weforum.org/stories/2017/02/queens-in-new-york-has-more-languages-than-anywhere-in-the-world/))
+
+Estudiar entonces la evolución étnica y económica de la población estudiantil de Nueva York puede resultar muy útil para poder predecir el posible futuro de la ciudad en una época de drásticos cambios demográficos y altos niveles de tensión racial en Estados Unidos. 
+
+## Aportaciones.
+
+Este proyecto se alinea particularmente con los siguientes ODS sugeridos por la ULPGC:
+
+-   ODS 4: Educación de Calidad: Al estudiar las desigualdades en la distribución étnica y socioeconómica de la población estudiantil, se pueden identificar brechas que permitan implementar políticas para garantizar una educación inclusiva y equitativa.
+-   ODS 10: Reducción de las Desigualdades: La identificación de patrones de desigualdad en la educación con base en factores raciales y económicos puede contribuir a diseñar intervenciones que promuevan la equidad.
+-   ODS 11: Ciudades y Comunidades Sostenibles: Al prever cómo la evolución demográfica afecta a la sostenibilidad y cohesión social de la ciudad, este proyecto contribuye a una mejor planificación urbana.
+
+Los resultados del análisis pueden servir a legisladores, educadores y urbanistas para tomar decisiones informadas que reduzcan desigualdades y promuevan una distribución equitativa de recursos en el sistema educativo de Nueva York y servir como modelo replicable para otras ciudades que busquen optimizar sus sistemas educativos en entornos igualmente diversos.
+
+De este modo, este proyecto no solo ofrece un análisis detallado de la población estudiantil de Nueva York, sino que también fomenta soluciones para problemas globales de desigualdad y cohesión social.
+
+## Fuentes de los datos.
+
+La fuente de los datos, mencionada anteriormente, es NYC Open Data, una fuente de alta fiabilidad desarrollada y mantenida por la Oficina de Tecnología e Innovación de Nueva York y que tiene acceso a una gran cantidad de datos oficiales recolectados por el gobierno de la ciudad.
+
+La alta fiabilidad de estos datos viene del gran peso legislativo que se le ha dado al libre acceso y a la recolección honesta de datos en la ley de la ciudad. ([Para más información sobre la Open Data Law](https://opendata.cityofnewyork.us/open-data-law/))
+
+## Análisis Inicial
+
+### Organización de los Datos
+
+Los datos utilizados en este análisis, disponibles para descargar [aquí](https://data.cityofnewyork.us/Education/2017-18-2021-22-Demographic-Snapshot/c7ru-d68s/about_data) en formato xlsx, están ordenados por hojas, cada una correspondiendo a un formato de división geográfica con el mismo rango temporal:
+
+-   **Regiones Geográficas**:
+    -   Boroughs: Bronx, Brooklyn, Manhattan, Queens y Staten Island.
+    -   Distritos escolares dentro de cada Borough.
+    -   Escuelas específicas y datos agregados de la ciudad.
+-   **Rango Temporal**: De 2017-2018 a 2021-2022, divididos anualmente según curso escolar..
+
+Los atributos numéricos a los que tenemos acceso son:
+
+-   **Número Total de Estudiantes Matriculados**: Total general y por
+    nivel escolar.
+-   **Distribución por Grados Escolares**: De preescolar hasta doceavo grado.
+
+Porcentaje y número total de estudiantes en las siguientes categorías:
+
+-   **Asiáticos (Asian)**
+
+-   **Negros (Black)**
+
+-   **Hispanos (Hispanic)**
+
+-   **Blancos (White)**
+
+-   **Multirraciales (Multi-Racial)**
+
+-   **Nativos Americanos (Native American)**
+
+-   **Datos Faltantes de Etnicidad (Missing Ethnicity Data)**
+
+-   **Generos Hombre y Mujer**
+
+-   **Condición Socioeconómica**: Estudiantes en situación económica
+    desfavorable (incluye el [Economic Need Index](https://data.cccnewyork.org/data/bar/1371/student-economic-need-index#1371/a/1/1622/127)).
+-   **Discapacidad**: Estudiantes con necesidades especiales.
+-   **Aprendizaje de Inglés**: "English Language Learners" (ELL).
+
+## Requisitos de Procesamiento
+ 
+Durante todo el análisis, se utilizaran de manera intercambiada los datos según Borough y según Distrito Escolar según sea de interés el contraste entre ambos. Se negligirán los datos según escuelas individuales y los datos totales para la ciudad entera pues ofrecen respectivamente una visión demasiado limitada y demasiado amplia como para ser de interés.
+
+### Generación de Tablas
+
+Los datos a utilizar están divididos en dos hojas del mismo fichero formato .xlsx, por lo que podemos tratarlos como ficheros completamente independientes.
+
+```{r, echo = FALSE}
+library(DT)
+
+datatable(
+  Datos_NYC_Borough,
+  extensions = c("Buttons", "Responsive"),
+  options = list(
+    dom = 'Bfrtip', # Barra de búsqueda, filtros y botones
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print'), # Botones de exportación
+    pageLength = 10, # Número de filas visibles por página
+    autoWidth = TRUE # Ajuste automático de ancho de columnas
+  ),
+  caption = 'Distribución de estudiantes según Borough.'
+)
+```
+
+```{r, echo = FALSE}
+datatable(
+  Datos_NYC_District,
+  extensions = c("Buttons", "Responsive"),
+  options = list(
+    dom = 'Bfrtip',
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+    pageLength = 10,
+    autoWidth = TRUE
+  ),
+  caption = 'Distribución de estudiantes según Distrito Escolar.'
+)
+```
+
+Ningún cambio se ha tenido que realizar a los datos extraídos para asegurar su buena adaptación al análisis, lo que hace de testigo a la gran calidad de los datos proporcionados por NYC Open Data.
+
+## Análisis Exploratorio
+
+### Visión General de la Población Estudiantil
+
+#### Evolución del número de matriculados en total.
+
+El número de estudiantes matriculados cada curso nos mostrará la tendencia general de crecimiento o decrecimiento de la población estudiantil.
+
+```{r, echo = FALSE}
+p <- Datos_NYC_Borough %>%
+ggplot(aes(x=Year, y=`Total.Enrollment`, fill=Borough)) +
+  geom_bar(stat="identity", position="dodge") + 
+  labs(title="Evolución de estudiantes inscritos en escuelas por año",
+       x="Año Escolar",
+       y="Total de Inscripciones",
+       fill="Borough") +
+  theme_minimal()
+
+ggplotly(p)
+```
+
+Como podemos ver, la población estudiantil general se encuentra en un periodo de lento decrecimiento desde 2020 en todos los Boroughs excepto en Staten Island. Esto podría deberse a la pandemia de la COVID-19 obligando a estudiantes en situaciones precarias a abandonar sus estudios, esto explicaría porqué la población de Staten Island (Borough relativamente rico y de población pequeña en comparación) no se habría visto tan afectada.
+
+#### Distribución por curso.
+
+Sumando los datos de todos los años, podemos ver una distribución general de como están repartidos los alumnos por curso y explorarlos según el Borough. Esto nos resultará util para identificar posibles patrones de concentración o disparidad en la matrícula por grado, y ayudar a las autoridades educativas a tomar decisiones informadas sobre recursos, planificación y asignación de personal en función de la cantidad de estudiantes por grado.
+
+
+```{r, echo = FALSE}
+orden_grados <- c("Grade.3K", "Grade.PK.(Half.Day.&.Full.Day)", "Grade.K", "Grade.1", "Grade.2", "Grade.3", "Grade.4", "Grade.5", "Grade.6", "Grade.7", "Grade.8", "Grade.9", "Grade.10", "Grade.11", "Grade.12")
+
+
+
+Datos_Grados_Tidy <- Datos_NYC_Borough %>%
+  select(Borough, Grade.3K:Grade.12) %>%
+  pivot_longer(cols = c(Grade.3K:Grade.12), names_to = "Grado", values_to = "Población") %>%
+  group_by(Borough, Grado) %>%
+  mutate(Grado = factor(Grado, levels = orden_grados))
+
+boroughs <- unique(Datos_Grados_Tidy$Borough)
+
+grafico_boroughs <- lapply(boroughs, function(b) {
+  Datos_Grados_Tidy %>%
+    filter(Borough == b) %>%
+    plot_ly(
+      x = ~Grado,                     
+      y = ~Población,                  
+      type = 'bar',                   
+      name = b,                         
+      marker = list(color = 'rgba(55, 128, 191, 0.7)')
+    ) %>%
+    layout(
+      title = paste("Distribución de la población por grado escolar en", b),  
+      xaxis = list(title = "Grado", tickangle = 45),   
+      yaxis = list(title = "Población"),                
+      showlegend = FALSE,                              
+      bargap = 0.3                                     
+    )
+})
+```
+
+```{r,echo = FALSE}
+grafico_boroughs[[1]]  
+```
+
+En el Bronx podemos apreciar un descenso significativo de estudiantes a partir del noveno grado (15 años de edad aproximadamente). Esto podría deberse a un abandono temprano de los estudios, lo cual exploraremos mas adelante en el análisis económico.
+
+```{r,echo = FALSE}
+grafico_boroughs[[2]]  
+```
+
+En Brooklyn (el Borough más poblado a 2020), la distribución por grado es más uniforme, con un pequeño bajón de alumnos en onceavo grado. 
+
+```{r,echo = FALSE}
+grafico_boroughs[[3]]  
+```
+
+En Manhattan se puede apreciar un gran salto en el número de estudiantes entre noveno y octavo grado. Teniendo en cuenta que el noveno grado es el primer grado del conocido como "High School", este aumento repentino muy probablemente se deba a la presencia de instituciones prestigiosas e internacionales con alto nivel de demanda en Manhattan, el centro económico y social de Nueva York y de posiblemente todo EE.UU.
+
+```{r,echo = FALSE}
+grafico_boroughs[[4]]  
+```
+
+Queens es el segundo Borough más poblado, y el bajón en el número de estudiantes de onceavo y doceavo grado podría deberse a abandono escolar por parte de estudiantes en situaciones vulnerables.
+
+```{r,echo = FALSE}
+grafico_boroughs[[5]]  
+```
+
+Como contraste, Staten Island ([el segundo Borough más rico después de Manhattan en salario medio](https://www.baruch.cuny.edu/nycdata/income-taxes/med_hhold_income.htm)) posee un nivel de escolarización consistente para todos los grados.
+
+#### Porcentaje de estudiantes pobres según Borough.
+
+Para contrastarlo con los niveles de escolarización anteriores, visualizaremos los distintos índices de pobreza de los Boroughs a través de los años:
+
+```{r, echo = FALSE}
+p <- Datos_NYC_Borough %>%
+  select(Borough, Year, `%.Poverty`) %>%
+  ggplot(aes(x = Borough, y = `%.Poverty`, fill = Borough, label = Year))+ 
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(shape=16, position=position_jitter(0.2))+
+    theme(legend.position = "none")
+ggplotly(p,tooltip=c("%.Poverty","Year"))
+```
+
+Vemos que los Boroughs más ricos (Manhattan y Staten Island) poseen los menores índices de pobreza y el grado de escolarización tardía (a partir de noveno grado) más estable, mientras que los Boroughs con un mayor índice de pobreza son más inestables en ese nivel de matriculación.
+
+### Distribución Racial 
+
+#### Distribución porcentual racial de los estudiantes por Borough:
+
+Como primer acercamiento, un simple diagrama circular nos mostrará las proporciones étnicas de los Boroughs:
+
+```{r, echo = FALSE}
+Datos_NYC_Borough_Percentages %>%
+ggplot(aes(x=1, y=Porcentaje, fill=Raza)) +
+  geom_col() + 
+  coord_polar(theta = "y") +
+  labs(title = "Distribución porcentual de estudiantes por raza en cada borough",
+       fill = "Raza") +
+  facet_wrap(~Borough) +
+  theme_minimal()
+```
+
+Con gran diferencia, la mayor proporción étnica es la hispánica, hecho que se debe al reciente flujo de inmigrantes sud y centroamericanos a la Gran Manzana y a los Estados Unidos en general. Brooklyn se muestra como el más diverso (lógico, pues se trata del Borough más residencial y con mayor población), teniendo una proporción mas o menos equitativa de estudiantes hispánicos y negros, con una minoria notable de estudiantes Asíaticos y Blancos.
+
+El único Borough con mayoría Blanca es Staten Island, el borough de clase Media-Alta con menor población, mientras que el Bronx, el borough históricamente mas pobre y negligido, tiene la mayor población hispánica, mayoritariamente [puertoriqueños y dominicanos](https://en.wikipedia.org/wiki/Demographics_of_the_Bronx).
+
+#### Comparación de estudiantes en situación de pobreza según si son de raza negra o hispánica
+
+Ya que hemos notado una gran mayoría negra e hispánica en los Boroughs históricamente menos afluentes, podemos analizar si la etnia del estudiante tiene relación directa con su condición económica.
+
+```{r, echo = FALSE}
+Datos_NYC_SumadosBH <- Datos_NYC_Borough %>%
+  mutate(`#.Black + #.Hispanic` = `#.Black` + `#.Hispanic`,
+         `%.Black + %.Hispanic` = `%.Black` + `%.Hispanic`)
+
+p2 <- Datos_NYC_SumadosBH %>%
+ggplot(aes(x=`%.Poverty`, y=`%.Black + %.Hispanic`, color=Borough)) +
+  geom_point(size=3, alpha=0.7) +
+  labs(title="Relación entre Estudiantes en Situación de Pobreza y Estudiantes Black + Hispanic",
+       x="Porcentaje de Estudiantes en Situación de Pobreza",
+       y="Número de Estudiantes Black + Hispanic",
+       color = "Borough") +
+  theme_minimal()
+
+ggplotly(p2)
+
+```
+
+```{r, echo = FALSE}
+p3 <- Datos_NYC_SumadosBH %>%
+  ggplot(aes(`#.Poverty`, `#.Black + #.Hispanic`)) +
+    geom_point() +  
+    geom_smooth(method = lm, se = FALSE) 
+
+ggplotly(p3)
+```
+
+El porcentaje de estudiantes en situación de pobreza y el porcentaje de estudiantes negros e hispanos coincide con una diferencia de manos o menos el 10% en todos los boroughs, y observamos también que existe una correlación bastante alta entre el número bruto de estudiantes pobres y el número de estudiantes racializados, esto nos indica que la gran mayoria de estudiantes pobres en todos los boroughs son negros o hispanos.
+
+#### Series temporales de estudiantes según distribución racial.
+
+Podemos ver la evolución étnica de la ciudad por medio de una serie temporal que muestre la evolución de los
+grupos étnicos de los estudiantes cada año según el borough en el que
+estudian.
+
+```{r, fig.asp = 1, echo = FALSE}
+
+Datos_NYC_Borough_Dates <- Datos_NYC_Borough_Percentages %>%
+  mutate(Year = as.numeric(substr(Year, 1, 4)))  # Extrae el primer año y lo convierte a número
+
+Datos_NYC_Borough_Dates <- Datos_NYC_Borough_Dates %>%
+  mutate(Year = ymd(paste0(Year, "-09-01")))
+
+Datos_NYC_Borough_tsibble <- Datos_NYC_Borough_Dates %>%
+  as_tsibble(index = Year, key = c(Borough, Raza))
+
+colores_raza <- c(
+  "White" = "blue", 
+  "Black" = "red", 
+  "Hispanic" = "green", 
+  "Multi-Racial" = "purple", 
+  "Native American" = "orange", 
+  "Asian" = "cyan", 
+  "Missing Ethnicity Data" = "gray"
+)
+
+Grafico_Temporal <- Datos_NYC_Borough_tsibble %>% 
+  autoplot(Porcentaje, aes(color = Raza)) +
+  facet_wrap(~ Borough, scales = "free_x") +  
+  labs(title = "Series temporales de distribuciones étnicas por Borough",
+       y = "Porcentaje", x = "Año") +
+  scale_color_manual(values = colores_raza) +  
+  theme_minimal(base_size = 14)+
+  theme(
+    plot.title = element_text(size = 10, face = "bold"),  
+    axis.text.x = element_blank(),
+    axis.title.x = element_text(size = 14),  
+    axis.title.y = element_text(size = 14),  
+    legend.title = element_blank()
+  )
+
+ggplotly(Grafico_Temporal)
+```
+
+
+Vemos que las distribuciones étnicas de los boroughs se han mantenido
+relativamente estables, aunque en Staten Island se puede notar un
+descenso gradual del porcentaje de estudiantes blancos y un aumento
+equivalente del porcentaje de estudiantes asíaticos, debido
+probablemente a un influjo gradual de inmigración de familias asiáticas de clase media-alta.
+
+#### Serie temporal de alumnos aprendiendo inglés
+
+Podría haber una correlación entre el número de estudiantes aprendiendo
+inglés (inmigrantes de primera generación o hijos de inmigrantes de
+primera generación) y el nivel de pobreza en el que podrían encontrarse
+estas familias inmigrantes. Analizamos utilizando una serie temporal:
+  
+```{r, fig.asp=1, echo = FALSE}
+Datos_NYC_Borough_Poverty_English <- Datos_NYC_Borough %>% 
+  group_by(Year, Borough) %>%
+  summarise(
+      `%.English Learners` = sum(`%.English.Language.Learners`, na.rm = TRUE),
+      `#.English Learners` = sum(`#.English.Language.Learners`, na.rm = TRUE),
+      `%.Poverty` = sum(`%.Poverty`, na.rm = TRUE),
+      `#.Poverty` = sum(`#.Poverty`, na.rm = TRUE),
+  )
+
+Datos_NYC_Borough_Dates_PE <- Datos_NYC_Borough_Poverty_English %>%
+  mutate(Year = as.numeric(substr(Year, 1, 4))) %>%
+  mutate(Year = ymd(paste0(Year, "-09-01")))
+
+Datos_long_PE <- Datos_NYC_Borough_Dates_PE %>%
+  pivot_longer(cols = c(`%.English Learners`, `%.Poverty`), 
+               names_to = "Variable", 
+               values_to = "Porcentaje")
+
+Datos_tsibble_PE <- Datos_long_PE %>%
+  as_tsibble(index = Year, key = c(Borough, Variable))
+
+Grafico_temporal_2 <- Datos_tsibble_PE %>%
+  autoplot(Porcentaje, aes(color=Variable)) +
+  facet_wrap(~ Borough, scales = "free_x") +
+  labs(title = "Evolución de los porcentajes de pobreza y alumnos aprendiendo inglés por Borough",
+       y = "Porcentaje", x = "Año") +
+  scale_color_manual(values = c(`%.English Learners` = "blue",`%.Poverty` = "red")) +  
+  theme_minimal(base_size = 14) + 
+  theme(
+    plot.title = element_text(size = 10, face = "bold"),  
+    axis.text.x = element_blank(),
+    axis.title.x = element_text(size = 14),  
+    axis.title.y = element_text(size = 14),  
+    legend.title = element_blank()
+  )
+
+ggplotly(Grafico_temporal_2)
+```
+
+Vemos que realmente no existe una gran relación temporal entre ambas variables, mientras que el porcentaje de pobreza ha estado decreciendo, el porcentaje de estudiantes aprendiendo inglés se ha mantenido mas o menos estable en los 5 boroughs. Esto podría indicar una mejora de las circunstancias económicas en general acompañadas por un influjo constante de inmigrantes.
+
+
+
+```{r, echo = FALSE}
+boroughs_geoj <- geojson_read("new-york-city-boroughs.geojson", what = "sp")
+
+boroughs_geoj_Tibble <- boroughs_geoj %>% as_tibble()
+
+school_districts_geoj <- geojson_read("School-Districts.geojson", what = "sp")
+
+school_districts_geoj_Tibble <- school_districts_geoj %>% as_tibble()
+```
+
+Cargamos ahora toda la información relevante según los distritos
+escolares de Nueva York, hay que tener en cuenta que no todos los
+distritos tienen representación geográfica ya que cubren otras
+situaciones escolares excepcionales. Estos distritos no estarán
+presentes en un mapa coroplético.
+
+```{r, echo = FALSE}
+Datos_NYC_Borough_Tidy <- read.xlsx("Demographic_Snapshot_2017-18_to_2021-22__Public_.xlsx", sheet = 3) %>% as_tibble() %>%
+  pivot_longer(cols = c(Total.Enrollment:Economic.Need.Index), names_to = "Parametro", values_to = "Valores")
+
+input.param = "Total.Enrollment"
+input.año = "2017-18"
+
+
+tb <- Datos_NYC_Borough_Tidy %>%
+  filter(Parametro == input.param, Year == input.año) %>% 
+  group_by(Borough) %>%
+  summarise(
+    Valores=last(na.omit(Valores))
+  ) %>%
+ arrange(desc(Valores))
+  
+boroughs_geoj_Data <- boroughs_geoj_Tibble %>%
+  left_join(Datos_NYC_Borough_Tidy, join_by(name == Borough))
+```
+
+```{r, echo = FALSE}
+Datos_NYC_District_PovertyPercentages_22 <- Datos_NYC_District %>%
+  group_by(Year, Administrative.District) %>%
+  summarise(
+    `%.Poverty` = sum(`%.Poverty`, na.rm = TRUE)
+  ) %>%
+  filter(Year == "2021-22") %>%
+  mutate(Administrative.District = str_remove(Administrative.District, "^0"))
+
+school_districts_geoj_Tibble <- school_districts_geoj_Tibble %>%
+  rename(Administrative.District = school_dist)
+
+Mapa_conDatos_porcentPobreza_2022 <- left_join(school_districts_geoj_Tibble, Datos_NYC_District_PovertyPercentages_22, join_by("Administrative.District"))
+
+```
+
+#### Mapa coroplético de estudiantes en situación de pobreza por distrito escolar en 2022.
+
+Usando datos geográficos de los distritos escolares, podemos comprobar
+con mayor detalle que barrios tienen mayor porcentaje de estudiantes en
+situaciones vulnerables.
+
+Al realizar este análisis según distrito escolar y no por borough,
+podemos decidir que barrios específicos están mas necesitados de
+reformas y programas de soporte social.
+
+```{r, echo = FALSE}
+etiquetas <- paste("<strong> Distrito escolar: ", Mapa_conDatos_porcentPobreza_2022$Administrative.District, "<strong><br>", round(Mapa_conDatos_porcentPobreza_2022$`%.Poverty` * 100, 2),"<strong>%") %>%  lapply(htmltools::HTML)
+
+pal <- colorQuantile("YlOrRd", Mapa_conDatos_porcentPobreza_2022$`%.Poverty`, n = 9)
+
+
+school_districts_geoj %>%
+  leaflet() %>%  
+  addPolygons(
+    fillColor = ~pal(Mapa_conDatos_porcentPobreza_2022$`%.Poverty`), 
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions( 
+      weight = 2,
+      color = rgb(0.2,0.2,0.2),
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    ),
+    label = etiquetas
+  )
+```
+
+Vemos que los mayores índices de pobreza se concentran en el Bronx,
+Harlem, y el centro de Brooklyn (distrito 23), zonas
+históricamente negligidas económicamente por el gobierno de la ciudad y
+del estado de Nueva York y con historias de alta criminalidad y
+violencia de bandas.
+
+Podemos comparar los porcentajes de pobreza según el distrito escolar
+con la composición racial de dichos distritos:
+
+#### Mapa coroplético de estudiantes de raza negra e hispánica en 2022
+
+```{r, echo = FALSE}
+Datos_NYC_District_RazePercentages_22 <- Datos_NYC_District %>%
+  group_by(Year, Administrative.District) %>%
+  summarise(
+    `%.Black` = sum(`%.Black`, na.rm = TRUE),
+    `%.Hispanic` = sum(`%.Hispanic`, na.rm = TRUE)
+  ) %>%
+  filter(Year == "2021-22") %>%
+  mutate(Administrative.District = str_remove(Administrative.District, "^0"))
+
+
+Mapa_conDatos_porcentRazas_2022 <- left_join(school_districts_geoj_Tibble, Datos_NYC_District_RazePercentages_22, join_by("Administrative.District"))
+
+etiquetas_raza <- paste("<strong> Distrito escolar: ", Mapa_conDatos_porcentPobreza_2022$Administrative.District, "<strong><br>", round(Mapa_conDatos_porcentRazas_2022$`%.Black` * 100, 2),"<strong>%") %>%  lapply(htmltools::HTML)
+
+
+
+pal <- colorQuantile("YlOrRd", Mapa_conDatos_porcentRazas_2022$`%.Black`, n = 9)
+mapa_black <- school_districts_geoj %>%
+  leaflet() %>%  
+  addPolygons(
+    fillColor = ~pal(Mapa_conDatos_porcentRazas_2022$`%.Black`), 
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions( 
+      weight = 2,
+      color = rgb(0.2,0.2,0.2),
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    ),
+    label = etiquetas_raza
+  ) %>%  addLegend(
+    pal = pal, 
+    values = Mapa_conDatos_porcentRazas_2022$`%.Black`, 
+    opacity = 0.7, 
+    title = "Estudiantes de raza negra",
+    position = "bottomleft",
+    labFormat = labelFormat(suffix = "%")
+  )
+
+
+etiquetas_raza_Hispanic <- paste("<strong> Distrito escolar: ", Mapa_conDatos_porcentPobreza_2022$Administrative.District, "<strong><br>", round(Mapa_conDatos_porcentRazas_2022$`%.Hispanic` * 100, 2),"<strong>%") %>%  lapply(htmltools::HTML)
+
+pal2 <- colorQuantile("YlOrRd", Mapa_conDatos_porcentRazas_2022$`%.Hispanic`, n = 9)
+mapa_hispanic <- school_districts_geoj %>%
+  leaflet() %>%  
+  addPolygons(
+    fillColor = ~pal2(Mapa_conDatos_porcentRazas_2022$`%.Hispanic`), 
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions( 
+      weight = 2,
+      color = rgb(0.2,0.2,0.2),
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    ),
+    label = etiquetas_raza_Hispanic
+  ) %>%  addLegend(
+    pal = pal2, 
+    values = Mapa_conDatos_porcentRazas_2022$`%.Hispanic`, 
+    opacity = 0.7, 
+    title = "Estudiantes de raza hispánica.",
+    position = "bottomleft",
+    labFormat = labelFormat(suffix = "%")
+  )
+
+mapa_black
+mapa_hispanic
+```
+
+Vemos que definitivamente, los distritos escolares con mayor población
+negra e hispánica coinciden mayoritariamente con los distritos con
+índices de pobreza mas altos.
+
+Podemos usar esta información para respaldar iniciativas de apoyo
+escolar y económico a las familias de estudiantes racializados o que
+estén en riesgo de abandonar los estudios por circunstancias económicas.
+
+#### Series temporales interactivas de estudiantes en situación de pobreza.
+
+Visualizar la evolución del porcentaje de estudiantes pobres puede ser muy util para compararla con años en los que ciertas leyes o programas sociales se pusieron en vigor y determinar su eficacia.
+
+```{r, echo = FALSE}
+Datos_tsibble_PE %>%
+  filter(Variable == "%.Poverty") %>%
+  hchart("line", hcaes(x = Year, y = round(Porcentaje, 3), group = Borough))
+```
+
+A pesar de los índices altos de pobreza en los barrios más afectados,
+podemos ver en la serie temporal que estos índices en general están en
+baja.
+
+Sin embargo, este gráfico cubre a todos los estudiantes sin mirar su
+raza, para analizar esta posible relación, realizaremos una serie
+temporal de la evolución del % de pobreza en distritos con mas de un 50%
+de población negra e hispánica.
+
+```{r, echo = FALSE}
+Datos_NYC_District_Black_Poverty <- Datos_NYC_District %>%
+  group_by(Year, Administrative.District) %>%
+  summarise(
+    `%.Racialized` = sum(`%.Black`, na.rm = TRUE) + sum(`%.Hispanic`, na.rm = TRUE),
+    `%.Poverty` = sum(`%.Poverty`, na.rm = TRUE)
+  ) %>%
+  mutate(Administrative.District = str_remove(Administrative.District, "^0")) %>%
+  filter(`%.Racialized` > 0.5)
+ 
+Datos_agrupados_Black_Poverty <- Datos_NYC_District_Black_Poverty %>%
+  group_by(Year) %>%
+  summarise(
+    `%.Racialized` = mean(`%.Racialized`, na.rm = TRUE),  
+    `%.Poverty` = mean(`%.Poverty`, na.rm = TRUE)  
+  ) %>%
+  mutate(Administrative.District = "Distritos Racializados")
+
+Datos_NYC_Borough_Dates_Black_poverty <- Datos_agrupados_Black_Poverty %>%
+  mutate(Year = as.numeric(substr(Year, 1, 4))) %>%
+  mutate(Year = ymd(paste0(Year, "-09-01")))
+
+Datos_long_Black_Poverty <- Datos_NYC_Borough_Dates_Black_poverty %>%
+  pivot_longer(cols = c(`%.Racialized`, `%.Poverty`), 
+               names_to = "Variable", 
+               values_to = "Porcentaje")
+
+Datos_tsibble_Black_poverty <- Datos_long_Black_Poverty %>%
+  as_tsibble(index = Year, key = c(Administrative.District, Variable))
+
+Datos_tsibble_Black_poverty %>%
+  filter(Variable == "%.Poverty") %>%
+  hchart("line", hcaes(x = Year, y = round(Porcentaje, 3), group = Administrative.District))
+
+```
+
+Vemos que efectivamente, esta gradual reducción del indice de pobreza se
+extiende a los distritos con una mayoría de estudiantes racializados.
+
+### Género
+
+#### Visión general de la distribución del género de los estudiantes según distrito.
+
+Hagamos un mapa de calor para visualizar la composición por genero de
+los distritos escolares:
+
+```{r, echo = FALSE}
+Datos_NYC_District_Gender_22 <- Datos_NYC_District %>%
+  group_by(Year, Administrative.District) %>%
+  summarise(
+    `%.Female` = sum(`%.Female`, na.rm = TRUE),
+    `%.Male` = sum(`%.Male`, na.rm = TRUE)
+  ) %>%
+  filter(Year == "2021-22")
+
+p_calor_gender <- Datos_NYC_District_Gender_22 %>%
+  pivot_longer(cols = c(`%.Female`, `%.Male`), names_to = "Variable", values_to = "Value") %>%
+  ggplot(aes(Variable, Administrative.District, fill = Value)) +
+    geom_tile() + 
+    scale_fill_gradientn(colors = brewer.pal(9, 'YlOrRd'))+
+    theme(axis.text.x = element_text(angle = 45,hjust=1))
+  
+ggplotly(p_calor_gender, tooltip=c("Variable","Administrative.District","Value"))
+
+```
+
+En la mayoría de distritos, la distribución por generos es prácticamente
+equitativa, así que sobresaltan dos excepciones: los distritos 75 y 79.
+Estos se tratan de distritos especiales que no tienen correspondencia
+geográfica directa. El distrito 75 se encarga de estudiantes de
+necesidades especiales, y el 79 de estudiantes en instituciones de
+aprendizaje alternativas.
+
+La razón por la gran diferencia de género en escuelas especializadas
+podría deberse al mayor estigma social que conyeva sufrir de una
+discapacidad en mujeres, o del bajo numero de diagnósticos de autismo
+que se proporcionan a niñas en comparación a niños (aunque no hay
+diferencia de género en muestras de síntomas de autismo o Asperger, si
+hay una gran diferencia de género cuando se trata de diagnósticos
+oficiales.)
+
+#### Posible relación entre el género y la situación economica.
+
+Podemos investigar una posible relación entre el género y la situación de pobreza de un alumno:
+
+```{r, echo = FALSE}
+fig <- plot_ly(Datos_NYC_District, x = ~`%.Female`, y = ~`%.Male`, z = ~`%.Poverty`,
+         marker = list(color = ~`%.Poverty`, colorscale = c('#FFE1A1', '#683531'), showscale = TRUE),
+         hoverinfo = 'text', 
+         text = ~paste('% Mujeres: ', round(`%.Female`,3), '%<br>% Hombres: ', round(`%.Male`,3), '%<br>% Pobreza: ', round(`%.Poverty`,3), '%')) 
+
+fig <- fig %>% add_markers()
+fig <- fig %>% layout(scene = list(
+                        xaxis = list(title = '% Mujeres'),
+                        yaxis = list(title = '% Hombres'),
+                        zaxis = list(title = '% Pobreza')),
+                      annotations = list(
+                        x = 1.13,
+                        y = 1.05,
+                        text = 'Relación de Pobreza por Género',
+                        xref = 'paper',
+                        yref = 'paper',
+                        showarrow = FALSE
+                      ))
+fig
+```
+
+Como podemos ver, realmente no existe una gran correlación entre el género y la situación económica, pues tanto en niveles altos como bajos de pobreza, la distribución entre los dos géneros se mantiene equilibrada, las únicas dos excepciones son las distribuciones de género en los distritos escolares especiales, los cuales analizaremos en el siguiente apartado.
+
+
+#### Series temporales de proporción de género
+
+Es conocido que las mujeres, por media, tienen [más índice de graduación a nivel universitario que los hombres](https://www.forbes.com/sites/michaeltnietzel/2024/08/07/women-continue-to-outpace-men-in-college-enrollment-and-graduation/)
+
+Podríamos investigar si esta tendencia se traduce también a la educación obligatoria, dándonos una visión sobre si existe diferencia de género en el abandono escolar.
+
+En primer lugar, visualizamos las proporciones de género en cada Borough a través del tiempo:
+
+```{r, echo = FALSE}
+Datos_Genero <- Datos_NYC_Borough %>%
+  select(Borough, Year, `%.Female`, `%.Male`) %>%
+  pivot_longer(
+    cols = c(`%.Female`, `%.Male`),
+    names_to = "Genero",
+    values_to = "Porcentaje"
+  )
+
+grafico_genero <- Datos_Genero %>%
+  ggplot(aes(x = Year, y = Porcentaje, color = Genero, group = Genero)) +
+  geom_line(size = 1) +
+  facet_wrap(~Borough, ncol = 2) + 
+  labs(
+    title = "Distribución porcentual de género en los Boroughs",
+    y = "Porcentaje",
+    x = "Año",
+    color = "Género"
+  ) +
+  theme_minimal()
+
+ggplotly(grafico_genero)
+```
+
+Es notable que Manhattan, el Borough con mayor proporcion de estudiantes de noveno grado y superior en comparación con el resto, es el único que mantiene una mayoría femenina de alumnos matriculados. Como ya expusimos antes, Manhattan es hogar de algunos de los institutos y programas pre-universitarios más exclusivos y exigentes del país, por lo que esto podría indicar una ligera dominancia femenina en ese entorno educativo.
+
+#### Diferencias en proporciones de género
+
+Ahora, visualizamos los campios de las proporciones de género segun el año, es decir, cuanto aumentó o disminuyó la proporcion de los géneros de los alumnos de un curso a otro.
+
+```{r, echo = FALSE}
+Abandono_Escolar <- Datos_Genero %>%
+  group_by(Borough, Genero) %>%
+  arrange(Borough, Genero, Year) %>%
+  mutate(Diferencia = Porcentaje - lag(Porcentaje)) %>%
+  filter(!is.na(Diferencia))
+
+grafico_abandono <- Abandono_Escolar %>%
+  ggplot(aes(x = Year, y = Diferencia, fill = Genero)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Borough, ncol = 2) +
+  labs(
+    title = "Diferencias en proporciones de género entre años por Borough",
+    y = "Cambio porcentual",
+    x = "Año",
+    fill = "Género"
+  ) +
+  theme_minimal()
+
+ggplotly(grafico_abandono)
+```
+
+Podemos ver que aunque existen cambios de proporción, estos son prácticamente insignificantes con cambios de menos del 0.01%, es decir, las proporciones se han mantenido prácticamente constantes a través de los años.
+
+### Discapacidad
+
+#### Distribución de alumnos discapacitados.
+
+Veamos la distribución de estudiantes con discapacidad en el distrito
+75:
+
+```{r, echo = FALSE}
+Datos_NYC_District_Gender_Disability_22 <- Datos_NYC_District %>%
+  group_by(Year, Administrative.District) %>%
+  summarise(
+    `%.Female` = sum(`%.Female`, na.rm = TRUE),
+    `%.Male` = sum(`%.Male`, na.rm = TRUE),
+    `%.Students.with.Disabilities` = sum(`%.Students.with.Disabilities`, na.rm = TRUE)
+  ) %>%
+  filter(Year == "2021-22")
+
+p_bar_Disability <- Datos_NYC_District_Gender_Disability_22 %>%
+  ggplot(aes(x = Administrative.District, y = `%.Students.with.Disabilities`, fill = Administrative.District)) +
+        geom_bar(stat = "identity") +
+    theme_minimal() +
+    theme(legend.position = "none")
+  
+ggplotly(p_bar_Disability)
+```
+
+Prácticamente un 100% de estudiantes del distrito 75 sufren de algun
+tipo de discapacidad.
+
+#### Número de estudiantes discapacitados según borough y distrito.
+
+Para una visión general sobre la prevalencia de discapacidades según
+borough y distrito:
+
+```{r, echo = FALSE}
+Datos_NYC_District <- Datos_NYC_District %>%
+   mutate(Administrative.District = str_remove(Administrative.District, "^0"))
+
+Datos_NYC_District_Borough <- Datos_NYC_District %>%
+  mutate(Borough = case_when(
+    Administrative.District %in% c(01:06) ~ "Manhattan",
+    Administrative.District %in% c(07:12) ~ "Bronx",
+    Administrative.District %in% c(13:23, 32) ~ "Brooklyn",
+    Administrative.District %in% c(24:30) ~ "Queens",
+    Administrative.District == 31 ~ "Staten Island",
+    TRUE ~ "No geográfico"
+  ))
+
+Datos_NYC_District_Borough <- Datos_NYC_District_Borough %>%
+  mutate(Borough = factor(Borough, levels = c("Manhattan", "Bronx", "Brooklyn", "Queens", "Staten Island", "No geográfico")))
+
+p_boxplot_Disability <- Datos_NYC_District_Borough %>%
+  ggplot(aes(x = Borough, y = `#.Students.with.Disabilities`, fill = Borough, label = Administrative.District, group = Borough)) +  
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(shape = 16, position = position_jitter(0.2), aes(label = Administrative.District)) +  
+  theme(legend.position = "none")
+
+ ggplotly(p_boxplot_Disability,tooltip=c("Administrative.District","#.Students.with.Disabilities"))
+
+```
+
+El gran rango presente en los distritos no geográficos se debe a que
+estos incluyen el distrito con mayor indice de discapacidad (distrito
+75) y el menor (distrito 79, especializado en escuelas alternativas y
+educación para adultos)
+
+#### Contraste de estudiantes discapacitados con estudiantes en situación de pobreza.
+
+Las personas discapacitadas son también mas vulnerables a situaciones
+económicas de pobreza. Comprobamos si hay relación directa entre el
+número de estudiantes discapacitados y el índice de pobreza.
+
+```{r, echo = FALSE}
+p_scatter_Disability <- Datos_NYC_District_Borough %>%
+  ggplot(aes(x = `%.Poverty`, y = `#.Students.with.Disabilities`, color = Borough, label = Administrative.District))+
+  geom_point() +
+  theme(legend.position = "none")
+  
+ggplotly(p_scatter_Disability)
+```
+
+Vemos que el índice de pobreza está mucho mas relacionado con el Borough
+y el distrito que con el numero de alumnos discapacitados. Sin embargo,
+notamos que hay un alto índice de pobreza en el distrito 75 para alumnos
+con necesidades especiales.
+
+#### Índices de pobreza en los distritos escolares no geográficos en 2022.
+
+```{r, echo = FALSE}
+p_Bar_Poverty_NoGeo <- Datos_NYC_District_Borough %>%
+  filter(Borough == "No geográfico") %>%
+  filter(Year == "2021-22") %>%
+  ggplot(aes(x = Administrative.District, y = `%.Poverty`, fill = `%.Students.with.Disabilities`)) +
+      geom_bar(stat = "identity") +
+      scale_fill_gradient(low = "lightyellow", high = "darkred") +
+      scale_y_continuous(labels = scales::percent_format(accuracy = 1), , limits = c(0, 1))
+
+ggplotly(p_Bar_Poverty_NoGeo)
+```
+
+Vemos que aunque los tres distritos no geográficos presentan altos
+índices de pobreza, el distrito 75 es el que más con un 86.8% de
+estudiantes en situación de pobreza. Esto confirma nuestra sospecha de
+vulnerabilidad de que este grupo demográfico es más sensible a
+situaciones económicas desfavorables, esto conyeva una gran consecuencia
+social pues comunmente las familias con hijos con alto grado de
+discapacidad deben lidiar con un mayor grado de responsabilidad tanto
+laboral como de cuidados adicionales que requiera la persona
+discapacitada, y mas aún si estas familias se encuentran en situación de
+pobreza y no pueden permitirse contratar cuidadores profesionales o
+tutores especializados.
+
+
+#### Correlación total entre discapacidad y pobreza.
+
+Como visión general, analizaremos la correlación entre el número total de estudiantes pobres y el número de estudiantes discapacitados en todos los Boroughs y Distritos.
+
+```{r, echo = FALSE}
+p_Scatter_Poverty_75 <- Datos_NYC_District_Borough %>%
+  filter(
+    !is.na(`#.Poverty`) & 
+    !is.na(`#.Students.with.Disabilities`)
+  ) %>%
+  select(Year, `#.Poverty`, `#.Students.with.Disabilities`)
+
+correlacion <- cor(
+  p_Scatter_Poverty_75$`#.Poverty`,
+  p_Scatter_Poverty_75$`#.Students.with.Disabilities`,
+  use = "complete.obs",
+  method = "pearson"
+)
+
+grafico_dispersion <- p_Scatter_Poverty_75 %>%
+  ggplot(aes(x = `#.Poverty`, y = `#.Students.with.Disabilities`)) +
+  geom_point(color = "blue", size = 3, alpha = 0.6) +
+  geom_smooth(method = "lm", color = "black", se = TRUE) + 
+  labs(
+    title = "Relación entre estudiantes pobres y estudiantes con discapacidades",
+    subtitle = paste("Coeficiente de correlación (r):", round(correlacion, 2)),
+    x = "Número de Estudiantes Pobres",
+    y = "Número de Estudiantes con Discapacidades"
+  ) +
+  theme_minimal()
+
+ggplotly(grafico_dispersion)
+```
+
+Observamos un muy alto nivel de correlación, por lo que podemos concluir con seguridad que la poblacion estudiantil discapacitada es de las más vulnerables económicamente en la ciudad. 
+
+
+## Cuadro de Mandos
+
+En acompañamiento con este análisis se ha desarrollado un cuadro de mandos interactivo que proporciona una manera rápida de analizar los niveles de correlación entre todos los parámetros de interés.
+
+-   **Mapas Coropléticos**: Uno de los 5 Boroughs, otro de todos los Distritos Escolares Geográficos, ofrece una visualización                geográfica de todos los paramétros proporcionados por el fichero. La tabla en el mapa de Distritos incluye una explicación sobre        los distritos educativos no geográficos para evitar confusión.
+
+-   **Matriz de Correlación**: Que resume las posibles correlaciones entre grupo étnico y numero o índice de estudiantes en situación de       pobreza. No se ha incluido una matriz de correlación para el género por haberse demostrado que no existe realmente una relación         significativa con la situación económica .
+
+-   **Análisis PCA**: En esta sección se realizan y se visualizan todos los cálculos necesarios para un análisis de componentes               principales, es decir, obteniendo las combinaciones lineales que maximizan la varianza de las variables. Para visualizar esta          varianza maximizada, utilizamos un diagrama de barras para visualizar la varianza de las componentes principales de mayor a menor.
+    
+-   **Visualización 2D PCA**: El resumen completo de las componentes principales, un diagrama de dispersión en el que se comparan los        primeros dos valores de las primeras dos componentes para cada observación, en este caso, cada observación corresponde a un            Borough. 
+
+
+-   **Comparación de Indicadores**: Comparación general por Borough de todos los parámetros, con posibilidad de ajustar                      logarítmicamente, por boxcox, o por raíz cuadrada según mejor ilustre las correlaciones posibles. Esta sección sirve como la           plataforma principal para contrastar los datos en su totalidad y constituye una herramienta muy poderosa en el análisis                exploratorio. 
+
+
+## Conclusión y Posibles Extensiones
+
+### Resultados obtenidos.
+
+Se han analizado cuatro apartados que se han considerado de especial importancia para el cumplimiento de los estándares de sostenibilidad y desarrollo de la ULPGC: una visión general de toda la población estudiantil, un análisis enfocado en los grupos étnicos de los alumnos y su posible estatus como inmigrantes, análisis para identificar posibles brechas de género, y un análisis sobre los alumnos discapacitados y su alto nivel de riesgo económico.
+
+En cuanto al análisis por grupos étnicos, se ha podido ver que claramente existe una alta correlación entre pertener a un grupo racial vulnerable socialmente (en este caso, hispánico o negro) y estar en situación de pobreza. Esto no es una sorpresa debido al grave problema de desigualdad racial prevalente en todo Estados Unidos; pero en la ciudad de Nueva York, conocida por su alto nivel de diversidad cultural y racial y considerada como la puerta de los inmigrantes al país, es mucho más importante redirigir la gran cantidad de recursos de la ciudad para atacar las causas de la desigualdad económica con origenes raciales. Pues no solo podría dar un ejemplo a seguir para el país norteamericano, sino para todo el mundo occidental que se enfrenta hoy en día a mayores índices de inmigración, especialmente de jóvenes vulnerables a caer en situaciones económicas vulnerables.
+
+El análisis por género realizado ha traído resultados interesantes, en el que cabe destacar que Manhattan es el único Borough con mayoría estudiantil femenina, pero de resto, se puede concluir que no existe realmente una brecha de género significativa en el sistema educativo de la ciudad; no se pudo apreciar un impacto del género en la situación económica y las proporciones se mantuvieron constantes durante todo el rango temporal de los datos, por lo que no se detectó una diferencia en el abandono escolar entre los géneros. 
+
+Pero un factor que si resultó ser muy significativo es la relación entre la población de alumnos discapacitados y la relación de alumnos en situación de pobreza. Un alto grado de correlación entre el número de ambos grupos de estudiantes y un altísimo índice de pobreza en el distrito administrativo 75 pone en el punto de mira un problema social que debería ser abordado lo antes posible. Un miembro de la unidad familiar con alto grado de discapacidad supone un coste muy elevado tanto econóimco como psicológico para sus familias, pues no solo incluye una escuela especializada, sino gastos médicos (infames en Estados Unidos por su altísimo precio), tutores especializados, o un miembro de la familia que tenga que servir de cuidador constante del individuo discapacitado. Un sistema de ayuda económica significativo a estas familias podría ser un buen primer paso para ayudar a este grupo altamente vulnerable.
+
+
+### Posibles Extensiones
+    
+Como una posible extensión al análisis, se podría utilizar el fichero con datos de escuelas específicas para analizar la correlación de estudiantes en escuelas pertenecientes al Distrito 79 (Situaciones Especiales que incluyen centros de internamiento juveniles) y visualizar su composición racial, de género y si algún grupo étnico es más propenso a estudiar en estos centros. 
+
+También sería interesante buscar y analizar datos más antiguos que, por ejemplo, cubran los cursos escolares desde el año 2000 o antes. Esto sería muy útil para detectar tendencias en las proporciones étnicas, de género, y de situacion económica a través del tiempo e identificar causas sistémicas a estos cambios de proporción, por ejemplo, contrastar los años de la crisis económica de 2007-2008 con el número de alumnos matriculados, proporción de pobreza, etc...
+
+Como otra posible extensión y última que se mencionará, también sería de interés buscar datos similares de otras grandes ciudades estadounienses (Los Angeles, Houston, Chicago, Miami...) y compararlos con los datos neoyorquinos. Así se podrían identificar que tendencias están limitadas a urbes específicas y cuales se extienden a un nivel nacional.
+
+
